@@ -41,6 +41,10 @@ while IFS= read -r url || [[ -n "$url" ]]; do
   else
     echo "clone  $name"
     git clone --bare --single-branch "$url" "$dir"
+    # A bare single-branch clone has no remote-tracking refspec, so
+    # refs/remotes/origin/* wouldn't be recognized as tracking branches when
+    # worktrees are later checked out off other branches (see setup_worktree.sh).
+    git --git-dir="$dir" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
   fi
 done < "$REPO_LIST"
 

@@ -78,9 +78,15 @@ if git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch"; then
   echo "checking out existing local branch '$branch'"
   git -C "$repo_dir" worktree add "$worktree_path" "$branch"
 elif git -C "$repo_dir" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-  # Branch exists on the remote but not locally (bare single-branch clones
-  # have no origin/* tracking refs, so fetch it into one and track it).
+  # Branch exists on the remote but not locally. A `--bare --single-branch`
+  # clone has no `+refs/heads/*:refs/remotes/origin/*` fetch refspec, so git
+  # doesn't treat anything under refs/remotes/origin/ as a remote-tracking
+  # branch and `worktree add --track` fails with "not a branch". Ensure the
+  # standard refspec first, then fetch the branch into a tracking ref.
   echo "checking out remote branch 'origin/$branch'"
+  if ! git -C "$repo_dir" config --get-all remote.origin.fetch | grep -q 'refs/remotes/origin/\*'; then
+    git -C "$repo_dir" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+  fi
   git -C "$repo_dir" fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch"
   git -C "$repo_dir" worktree add --track -b "$branch" "$worktree_path" "origin/$branch"
 else
