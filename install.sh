@@ -23,6 +23,9 @@ END="# <<< scripts (managed by install.sh) <<<"
 # completion file that actually exists.
 block="$BEGIN"
 block+=$'\n'"export PATH=\"$SCRIPT_DIR:\$PATH\""
+if [[ -e "$SCRIPT_DIR/iain.sh" ]]; then
+  block+=$'\n'"source \"$SCRIPT_DIR/iain.sh\""
+fi
 for f in "$SCRIPT_DIR"/completions/*.zsh; do
   [[ -e "$f" ]] || continue
   block+=$'\n'"source \"$f\""
