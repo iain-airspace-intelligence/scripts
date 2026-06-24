@@ -80,6 +80,18 @@ if $do_backend; then
   fi
 fi
 
+# --- vscode multi-root workspace ----------------------------------------------
+# Drop the checked-in multi-root .code-workspace into the branch dir so backend +
+# frontend open together. Each folder keeps its own .vscode/launch.json;
+# ${workspaceFolder} resolves per-folder.
+workspace_template="$script_dir/rams.code-workspace"
+if [ -f "$workspace_template" ]; then
+  echo "==> workspace $workspace_template -> $base/rams.code-workspace"
+  cp "$workspace_template" "$base/rams.code-workspace"
+else
+  echo "warning: no workspace template at '$workspace_template'; skipping" >&2
+fi
+
 # --- install phase ------------------------------------------------------------
 if [ "${RAMS_SKIP_INSTALL:-}" = "1" ]; then
   echo "RAMS_SKIP_INSTALL=1 set -> skipping install phase"
