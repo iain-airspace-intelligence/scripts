@@ -58,6 +58,24 @@ esac
 
 base="$PWD/$branch"
 
+# Where to drop the user when we're done:
+#   b  -> the backend worktree
+#   f  -> the frontend worktree
+#   bf -> the branch dir containing both
+case "$mode" in
+  b)  target="$base/backend" ;;
+  f)  target="$base/frontend" ;;
+  bf) target="$base" ;;
+esac
+
+# A script can't change its parent shell's cwd, so to actually leave the user
+# *in* the new folder we cd there and hand off to a fresh interactive shell.
+enter_target() {
+  echo "==> entering $target"
+  cd "$target"
+  exec "${SHELL:-/bin/zsh}"
+}
+
 setup_one() {
   local repo="$1" subdir="$2"
   echo "==> $repo -> $base/$subdir"
@@ -96,7 +114,7 @@ fi
 if [ "${RAMS_SKIP_INSTALL:-}" = "1" ]; then
   echo "RAMS_SKIP_INSTALL=1 set -> skipping install phase"
   echo "done: $base"
-  exit 0
+  enter_target
 fi
 
 # Build a single zsh program so awsfix runs once and its env is inherited by
@@ -127,3 +145,4 @@ else
 fi
 
 echo "done: $base"
+enter_target
