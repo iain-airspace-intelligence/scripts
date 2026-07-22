@@ -63,6 +63,11 @@ function _asi_export_codeartifact() {
     export DEVPI_URL="https://aws:${token}@uni-codeartifact-209479306031.d.codeartifact.us-east-2.amazonaws.com/pypi/uni-codeartifact/simple/"
     export UV_DEFAULT_INDEX="$DEVPI_URL"
     export CARGO_REGISTRIES_UNI_TOKEN="$token"
+    # Index + provider live in ~/.cargo/config.toml for native builds, but the
+    # Docker build has no config.toml and reads them only from these env vars
+    # (passed through as build args). Export them so awsfix alone suffices.
+    export CARGO_REGISTRIES_UNI_INDEX="sparse+https://uni-codeartifact-209479306031.d.codeartifact.us-east-2.amazonaws.com/cargo/uni-codeartifact/"
+    export CARGO_REGISTRIES_UNI_CREDENTIAL_PROVIDER="cargo:token"
 }
 
 # Load a still-valid cached token into this shell. Returns non-zero (silently)
