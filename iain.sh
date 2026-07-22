@@ -92,7 +92,23 @@ function _asi_load_codeartifact() {
 
 function awsfix() {
     export AWS_PROFILE=artifacts
-    aws sso login
+
+    # If the cached CodeArtifact token is still valid we authenticated recently
+    # and nothing has expired: load it into this shell and stop. No browser, no
+    # re-fetch, no docker re-login. This is the common case, so awsfix becomes a
+    # near no-op in a fresh shell instead of opening the browser every time.
+    if _asi_load_codeartifact; then
+        return 0
+    fi
+
+    # Cache is missing or stale. Only open the browser when the SSO session has
+    # actually expired -- a still-valid session lets `aws sso login` be skipped
+    # entirely. `aws sts get-caller-identity` succeeds silently while the cached
+    # SSO token is good.
+    if ! aws sts get-caller-identity --profile dev >/dev/null 2>&1; then
+        aws sso login
+    fi
+
     aws ecr get-login-password --region us-east-2 --profile dev \
         | docker login --username AWS --password-stdin 209479306031.dkr.ecr.us-east-2.amazonaws.com
 
