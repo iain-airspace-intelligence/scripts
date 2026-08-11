@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# setup_worktree.sh <repo> <branch_name>
+# setup_worktree.sh <repo> <branch_name> [base_branch]
 #
 # Creates a git worktree for <repo> at ./<branch_name> in the current
 # directory. <repo> may be an absolute path or a name/path under ~/dev/repos,
@@ -10,26 +10,40 @@
 # "iain/asi-123-add-evaluator"), which become nested directories.
 #
 # Branch handling: if the branch already exists (local or remote) it is
-# checked out in the new worktree; otherwise a new branch is created off the
-# repo's default branch.
+# checked out in the new worktree; otherwise a new branch is created off
+# [base_branch], defaulting to the repo's default branch. The base may itself
+# be checked out in another worktree (stacked branches) — git only forbids
+# checking out the *same* branch twice, not branching off it.
 
 set -euo pipefail
 
 REPOS_ROOT="${REPOS_ROOT:-$HOME/dev/repos}"
 
 usage() {
-  echo "usage: setup_worktree.sh <repo> <branch_name>" >&2
+  echo "usage: setup_worktree.sh <repo> <branch_name> [base_branch]" >&2
   exit 2
 }
 
-[ "$#" -eq 2 ] || usage
+[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
 
 repo_arg="$1"
 branch="$2"
+base_branch="${3:-}"
 
 is_git_repo() {
   # True for a working clone or a bare repo.
   [ -d "$1" ] && git -C "$1" rev-parse --git-dir >/dev/null 2>&1
+}
+
+# A `--bare --single-branch` clone has no `+refs/heads/*:refs/remotes/origin/*`
+# fetch refspec, so git doesn't treat anything under refs/remotes/origin/ as a
+# remote-tracking branch and `worktree add --track` fails with "not a branch".
+fetch_remote_branch() {
+  local ref="$1"
+  if ! git -C "$repo_dir" config --get-all remote.origin.fetch | grep -q 'refs/remotes/origin/\*'; then
+    git -C "$repo_dir" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+  fi
+  git -C "$repo_dir" fetch --quiet origin "+refs/heads/$ref:refs/remotes/origin/$ref"
 }
 
 # Resolve the repo directory: accept an absolute/relative path or a bare name,
@@ -78,21 +92,25 @@ if git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch"; then
   echo "checking out existing local branch '$branch'"
   git -C "$repo_dir" worktree add "$worktree_path" "$branch"
 elif git -C "$repo_dir" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-  # Branch exists on the remote but not locally. A `--bare --single-branch`
-  # clone has no `+refs/heads/*:refs/remotes/origin/*` fetch refspec, so git
-  # doesn't treat anything under refs/remotes/origin/ as a remote-tracking
-  # branch and `worktree add --track` fails with "not a branch". Ensure the
-  # standard refspec first, then fetch the branch into a tracking ref.
+  # Branch exists on the remote but not locally.
   echo "checking out remote branch 'origin/$branch'"
-  if ! git -C "$repo_dir" config --get-all remote.origin.fetch | grep -q 'refs/remotes/origin/\*'; then
-    git -C "$repo_dir" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
-  fi
-  git -C "$repo_dir" fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+  fetch_remote_branch "$branch"
   git -C "$repo_dir" worktree add --track -b "$branch" "$worktree_path" "origin/$branch"
 else
-  # New branch off the default branch.
-  echo "creating new branch '$branch' off '$default_branch'"
-  git -C "$repo_dir" worktree add -b "$branch" "$worktree_path" "$default_branch"
+  # New branch off [base_branch], defaulting to the repo's default branch.
+  if [ -z "$base_branch" ]; then
+    base_ref="$default_branch"
+  elif git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$base_branch"; then
+    base_ref="$base_branch"
+  elif git -C "$repo_dir" ls-remote --exit-code --heads origin "$base_branch" >/dev/null 2>&1; then
+    fetch_remote_branch "$base_branch"
+    base_ref="origin/$base_branch"
+  else
+    echo "error: base branch '$base_branch' not found locally or on origin" >&2
+    exit 1
+  fi
+  echo "creating new branch '$branch' off '$base_ref'"
+  git -C "$repo_dir" worktree add -b "$branch" "$worktree_path" "$base_ref"
 fi
 
 echo "worktree ready: $worktree_path"

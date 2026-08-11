@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rams_setup.sh <b|f|bf> <branch_name>
+# rams_setup.sh <b|f|bf> <branch_name> [base_branch]
 #
 # Sets up RAMS worktrees for the given branch under ./<branch_name> in the
 # current directory, then installs each one:
@@ -22,7 +22,8 @@
 #
 # The branch name may contain slashes (e.g. a Linear branch name); they become
 # nested directories. Branch handling is delegated to setup_worktree.sh
-# (existing branch -> checked out, otherwise created off the default branch).
+# (existing branch -> checked out, otherwise created off [base_branch], which
+# defaults to the default branch — pass a parent branch to stack on it).
 
 set -euo pipefail
 
@@ -34,14 +35,15 @@ setup_worktree="$script_dir/setup_worktree.sh"
 backend_env="$script_dir/env/rams.env"
 
 usage() {
-  echo "usage: rams_setup.sh <b|f|bf> <branch_name>" >&2
+  echo "usage: rams_setup.sh <b|f|bf> <branch_name> [base_branch]" >&2
   exit 2
 }
 
-[ "$#" -eq 2 ] || usage
+[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
 
 mode="$1"
 branch="$2"
+base_branch="${3:-}"
 
 case "$mode" in
   b|f|bf) ;;
@@ -74,7 +76,11 @@ enter_target() {
 setup_one() {
   local repo="$1" subdir="$2"
   echo "==> $repo -> $base/$subdir"
-  WORKTREE_PATH="$base/$subdir" "$setup_worktree" "$repo" "$branch"
+  if [ -n "$base_branch" ]; then
+    WORKTREE_PATH="$base/$subdir" "$setup_worktree" "$repo" "$branch" "$base_branch"
+  else
+    WORKTREE_PATH="$base/$subdir" "$setup_worktree" "$repo" "$branch"
+  fi
 }
 
 # --- create worktrees ---------------------------------------------------------

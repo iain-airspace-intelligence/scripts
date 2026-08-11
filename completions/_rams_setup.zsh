@@ -4,6 +4,7 @@
 #
 #   arg 1  mode    -> b | f | bf
 #   arg 2  branch  -> branch names known to the rams bare repos
+#   arg 3  base    -> same, the branch to stack the new branch on (optional)
 #
 # Branch names are read from the local refs of the bare clones (refs/heads +
 # refs/remotes/origin), exactly like `git checkout <TAB>` — instant, no network.
@@ -31,7 +32,7 @@ _rams_setup() {
       )
       _describe -t modes 'mode' modes
       ;;
-    3)
+    3|4)
       branches=()
       for repo in uni-reach-backend-rams uni-flyways-reach-rams; do
         dir="$HOME/dev/repos/$repo.git"
@@ -44,7 +45,11 @@ _rams_setup() {
       branches=( ${branches#origin/} )
       branches=( ${branches:#HEAD} )
       branches=( ${(u)branches} )
-      _describe -t branches 'rams branch' branches
+      if (( CURRENT == 3 )); then
+        _describe -t branches 'rams branch' branches
+      else
+        _describe -t branches 'base branch' branches
+      fi
       ;;
   esac
 }
