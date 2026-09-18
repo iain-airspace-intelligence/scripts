@@ -172,5 +172,9 @@ function ds() {
     docker stop $(docker ps -q)
 }
 
+function cr() {
+    cd ~/dev/projects/rams
+}
+
 # Pick up a cached CodeArtifact token on shell startup (no-op if missing/stale).
 _asi_load_codeartifact
