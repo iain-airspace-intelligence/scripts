@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# rams_setup.sh <b|f|bf> <branch_name> [base_branch]
+# rams_setup.sh <branch_name> [base_branch]
 #
-# Sets up RAMS worktrees for the given branch under ./<branch_name> in the
-# current directory, then installs each one:
+# Sets up a RAMS worktree for the given branch under ./<branch_name> in the
+# current directory, then installs it. RAMS lives in a single monorepo
+# (uni-rams-monorepo), so one worktree holds both apps:
 #
-#   b   backend only   -> <branch_name>/backend   (uni-reach-backend-rams)
-#   f   frontend only  -> <branch_name>/frontend  (uni-flyways-reach-rams)
-#   bf  both           -> both of the above
+#   <branch_name>/apps/backend
+#   <branch_name>/apps/frontend
 #
-# After the worktrees are created, the install phase runs (skip with
+# After the worktree is created, the install phase runs (skip with
 # RAMS_SKIP_INSTALL=1):
 #
-#   awsfix                                  (once, up front; aws sso + env)
-#   backend:  just install_packages && just copy-assets
-#   frontend: bun run ar-login && bun install
+#   awsfix                                   (once, up front; aws sso + env)
+#   apps/backend:   just install_packages && just copy-assets
+#   apps/frontend:  bun run ar-login && bun install
 #
 # awsfix is a zsh shell function (not a binary), so the install phase runs in
 # an interactive zsh; its exported env (DEVPI_URL, CODEARTIFACT token, ...) is
@@ -27,86 +27,65 @@
 
 set -euo pipefail
 
-BACKEND_REPO="uni-reach-backend-rams"
-FRONTEND_REPO="uni-flyways-reach-rams"
+RAMS_REPO="uni-rams-monorepo"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 setup_worktree="$script_dir/setup_worktree.sh"
 backend_env="$script_dir/env/rams.env"
 
 usage() {
-  echo "usage: rams_setup.sh <b|f|bf> <branch_name> [base_branch]" >&2
+  echo "usage: rams_setup.sh <branch_name> [base_branch]" >&2
   exit 2
 }
 
-[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
+[ "$#" -eq 1 ] || [ "$#" -eq 2 ] || usage
 
-mode="$1"
-branch="$2"
-base_branch="${3:-}"
-
-case "$mode" in
-  b|f|bf) ;;
-  *) echo "error: mode must be one of: b, f, bf" >&2; usage ;;
-esac
-
-do_backend=false
-do_frontend=false
-case "$mode" in
-  b)  do_backend=true ;;
-  f)  do_frontend=true ;;
-  bf) do_backend=true; do_frontend=true ;;
-esac
+branch="$1"
+base_branch="${2:-}"
 
 base="$PWD/$branch"
-
-# Drop the user in the branch dir that holds the worktree(s) we just created,
-# regardless of mode -- so they land beside backend/ and frontend/ rather than
-# inside one of them.
-target="$base"
 
 # A script can't change its parent shell's cwd, so to actually leave the user
 # *in* the new folder we cd there and hand off to a fresh interactive shell.
 enter_target() {
-  echo "==> entering $target"
-  cd "$target"
+  echo "==> entering $base"
+  cd "$base"
   exec "${SHELL:-/bin/zsh}"
 }
 
-setup_one() {
-  local repo="$1" subdir="$2"
-  echo "==> $repo -> $base/$subdir"
-  if [ -n "$base_branch" ]; then
-    WORKTREE_PATH="$base/$subdir" "$setup_worktree" "$repo" "$branch" "$base_branch"
-  else
-    WORKTREE_PATH="$base/$subdir" "$setup_worktree" "$repo" "$branch"
-  fi
-}
-
-# --- create worktrees ---------------------------------------------------------
-$do_backend  && setup_one "$BACKEND_REPO" backend
-$do_frontend && setup_one "$FRONTEND_REPO" frontend
+# --- create the worktree ------------------------------------------------------
+echo "==> $RAMS_REPO -> $base"
+if [ -n "$base_branch" ]; then
+  WORKTREE_PATH="$base" "$setup_worktree" "$RAMS_REPO" "$branch" "$base_branch"
+else
+  WORKTREE_PATH="$base" "$setup_worktree" "$RAMS_REPO" "$branch"
+fi
 
 # --- backend env --------------------------------------------------------------
 # Drop the checked-in backend env into the new worktree (it's git-ignored, so a
 # fresh worktree won't have it).
-if $do_backend; then
-  if [ -f "$backend_env" ]; then
-    echo "==> env $backend_env -> $base/backend/.env-local"
-    cp "$backend_env" "$base/backend/.env-local"
-  else
-    echo "warning: no backend env at '$backend_env'; skipping .env-local" >&2
-  fi
+if [ -f "$backend_env" ]; then
+  echo "==> env $backend_env -> $base/apps/backend/.env-local"
+  cp "$backend_env" "$base/apps/backend/.env-local"
+else
+  echo "warning: no backend env at '$backend_env'; skipping .env-local" >&2
 fi
 
 # --- vscode multi-root workspace ----------------------------------------------
-# Drop the checked-in multi-root .code-workspace into the branch dir so backend +
-# frontend open together. Each folder keeps its own .vscode/launch.json;
+# Drop the checked-in multi-root .code-workspace into the worktree root so both
+# apps open together. Each folder keeps its own .vscode/launch.json;
 # ${workspaceFolder} resolves per-folder.
 workspace_template="$script_dir/rams.code-workspace"
 if [ -f "$workspace_template" ]; then
   echo "==> workspace $workspace_template -> $base/rams.code-workspace"
   cp "$workspace_template" "$base/rams.code-workspace"
+
+  common_dir="$(git -C "$base" rev-parse --path-format=absolute --git-common-dir)"
+  exclude_file="$common_dir/info/exclude"
+  mkdir -p "$(dirname "$exclude_file")"
+  if ! grep -qxF '/rams.code-workspace' "$exclude_file" 2>/dev/null; then
+    echo '/rams.code-workspace' >>"$exclude_file"
+  fi
 else
   echo "warning: no workspace template at '$workspace_template'; skipping" >&2
 fi
@@ -127,21 +106,17 @@ fi
 # trips `set -e` and aborts the whole install before any package is installed.
 printf -v base_q '%q' "$base"
 post=$'awsfix\nset -e\n'
-if $do_backend; then
-  post+="printf '\\n==> installing backend\\n'"$'\n'
-  post+="cd $base_q/backend && just install_packages && just copy-assets"$'\n'
-fi
-if $do_frontend; then
-  post+="printf '\\n==> installing frontend\\n'"$'\n'
-  post+="cd $base_q/frontend && bun run ar-login && bun install"$'\n'
-fi
+post+="printf '\\n==> installing backend\\n'"$'\n'
+post+="cd $base_q/apps/backend && just install_packages && just copy-assets"$'\n'
+post+="printf '\\n==> installing frontend\\n'"$'\n'
+post+="cd $base_q/apps/frontend && bun run ar-login && bun install"$'\n'
 
 # awsfix is defined in the user's interactive zsh config, so use `zsh -i`.
 if zsh -ic 'typeset -f awsfix >/dev/null 2>&1'; then
   zsh -ic "$post"
 else
   echo "warning: 'awsfix' not found in interactive zsh; skipping install phase." >&2
-  echo "         run it yourself in each worktree under $base" >&2
+  echo "         run it yourself in $base" >&2
   exit 1
 fi
 
