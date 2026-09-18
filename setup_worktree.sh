@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# setup_worktree.sh <repo> <branch_name> [base_branch]
+# setup_worktree.sh [-d <folder>] <repo> <branch_name> [base_branch]
 #
 # Creates a git worktree for <repo> at ./<branch_name> in the current
-# directory. <repo> may be an absolute path or a name/path under ~/dev/repos,
-# with or without a trailing ".git" — bare clones (e.g. "uni-foo.git", as
-# produced by clone_uni_bare.sh) and regular working clones both work. The
-# branch name may contain slashes (e.g. a Linear branch name like
-# "iain/asi-123-add-evaluator"), which become nested directories.
+# directory, or at ./<folder> when -d/--dir is given. <repo> may be an absolute
+# path or a name/path under ~/dev/repos, with or without a trailing ".git" —
+# bare clones (e.g. "uni-foo.git", as produced by clone_uni_bare.sh) and
+# regular working clones both work. The branch name may contain slashes (e.g. a
+# Linear branch name like "iain/asi-123-add-evaluator"), which become nested
+# directories.
 #
 # Branch handling: if the branch already exists (local or remote) it is
 # checked out in the new worktree; otherwise a new branch is created off
@@ -20,15 +21,47 @@ set -euo pipefail
 REPOS_ROOT="${REPOS_ROOT:-$HOME/dev/repos}"
 
 usage() {
-  echo "usage: setup_worktree.sh <repo> <branch_name> [base_branch]" >&2
+  echo "usage: setup_worktree.sh [-d|--dir <folder>] <repo> <branch_name> [base_branch]" >&2
   exit 2
 }
+
+folder=""
+args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -d|--dir)
+      [ "$#" -ge 2 ] || usage
+      folder="$2"
+      shift 2
+      ;;
+    --dir=*)
+      folder="${1#--dir=}"
+      shift
+      ;;
+    -h|--help) usage ;;
+    --)
+      shift
+      args+=("$@")
+      break
+      ;;
+    -*)
+      echo "error: unknown option '$1'" >&2
+      usage
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- ${args[@]+"${args[@]}"}
 
 [ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
 
 repo_arg="$1"
 branch="$2"
 base_branch="${3:-}"
+folder="${folder:-$branch}"
 
 is_git_repo() {
   # True for a working clone or a bare repo.
@@ -67,9 +100,10 @@ if [ -z "$repo_dir" ]; then
 fi
 repo_dir="$(cd "$repo_dir" && pwd)"
 
-# Worktree path: <branch_name> (with slashes) under the current directory.
-# Callers (e.g. rams_setup.sh) may override the destination via $WORKTREE_PATH.
-worktree_path="${WORKTREE_PATH:-$PWD/$branch}"
+# Worktree path: <folder> (defaulting to <branch_name>, slashes included) under
+# the current directory. Callers (e.g. rams_setup.sh) may override the
+# destination via $WORKTREE_PATH.
+worktree_path="${WORKTREE_PATH:-$PWD/$folder}"
 if [ -e "$worktree_path" ]; then
   echo "error: '$worktree_path' already exists" >&2
   exit 1
