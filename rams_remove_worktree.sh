@@ -30,8 +30,6 @@ usage() {
 branch="$1"
 base="$PWD/$branch"
 
-rm -f "$base/rams.code-workspace"
-
 echo "==> $RAMS_REPO <- $base"
 WORKTREE_PATH="$base" "$remove_worktree" "$RAMS_REPO" "$branch"
 
