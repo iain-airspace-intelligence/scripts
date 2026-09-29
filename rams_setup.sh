@@ -45,14 +45,6 @@ base_branch="${2:-}"
 
 base="$PWD/$branch"
 
-# A script can't change its parent shell's cwd, so to actually leave the user
-# *in* the new folder we cd there and hand off to a fresh interactive shell.
-enter_target() {
-  echo "==> entering $base"
-  cd "$base"
-  exec "${SHELL:-/bin/zsh}"
-}
-
 # --- create the worktree ------------------------------------------------------
 echo "==> $RAMS_REPO -> $base"
 if [ -n "$base_branch" ]; then
@@ -75,7 +67,7 @@ fi
 if [ "${RAMS_SKIP_INSTALL:-}" = "1" ]; then
   echo "RAMS_SKIP_INSTALL=1 set -> skipping install phase"
   echo "done: $base"
-  enter_target
+  exit 0
 fi
 
 # Build a single zsh program so awsfix runs once and its env is inherited by
@@ -102,4 +94,3 @@ else
 fi
 
 echo "done: $base"
-enter_target

@@ -176,5 +176,13 @@ function cr() {
     cd ~/dev/projects/rams
 }
 
+function rams_setup.sh() {
+    local target="$PWD/$1"
+    command rams_setup.sh "$@"
+    local rc=$?
+    [[ -n "$1" && -d "$target" ]] && cd "$target"
+    return $rc
+}
+
 # Pick up a cached CodeArtifact token on shell startup (no-op if missing/stale).
 _asi_load_codeartifact
