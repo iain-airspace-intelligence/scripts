@@ -90,6 +90,20 @@ function _asi_load_codeartifact() {
     _asi_export_codeartifact "$token"
 }
 
+_ASI_ECR_REGISTRY=209479306031.dkr.ecr.us-east-2.amazonaws.com
+
+function _asi_ecr_logged_in() {
+    docker manifest inspect "$_ASI_ECR_REGISTRY/asi-inc/rust-builder:last-built" >/dev/null 2>&1
+}
+
+function _asi_ecr_login() {
+    if ! aws sts get-caller-identity --profile dev >/dev/null 2>&1; then
+        aws sso login
+    fi
+    aws ecr get-login-password --region us-east-2 --profile dev \
+        | docker login --username AWS --password-stdin "$_ASI_ECR_REGISTRY"
+}
+
 function awsfix() {
     export AWS_PROFILE=artifacts
 
@@ -98,6 +112,7 @@ function awsfix() {
     # re-fetch, no docker re-login. This is the common case, so awsfix becomes a
     # near no-op in a fresh shell instead of opening the browser every time.
     if _asi_load_codeartifact; then
+        _asi_ecr_logged_in || _asi_ecr_login
         return 0
     fi
 
@@ -105,12 +120,7 @@ function awsfix() {
     # actually expired -- a still-valid session lets `aws sso login` be skipped
     # entirely. `aws sts get-caller-identity` succeeds silently while the cached
     # SSO token is good.
-    if ! aws sts get-caller-identity --profile dev >/dev/null 2>&1; then
-        aws sso login
-    fi
-
-    aws ecr get-login-password --region us-east-2 --profile dev \
-        | docker login --username AWS --password-stdin 209479306031.dkr.ecr.us-east-2.amazonaws.com
+    _asi_ecr_login
 
     local token
     token=$(aws codeartifact get-authorization-token \
